@@ -212,7 +212,7 @@ def get_table_from_compound_identifier(
     try:
         return context.tables[tableName]
     except KeyError:
-        raise AttributeError(f"Table {tableName} is not defined.")
+        raise AttributeError(f"Table '{tableName}' does not exist.")
 
 
 def convert_sql_kwargs(
