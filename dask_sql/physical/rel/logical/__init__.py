@@ -6,6 +6,7 @@ from .sample import SamplePlugin
 from .sort import LogicalSortPlugin
 from .table_scan import LogicalTableScanPlugin
 from .union import LogicalUnionPlugin
+from .intersect import LogicalIntersectPlugin
 from .minus import LogicalMinusPlugin
 from .values import LogicalValuesPlugin
 
