@@ -32,6 +32,7 @@ import org.apache.calcite.rel.rules.FilterSetOpTransposeRule;
 import org.apache.calcite.rel.rules.FilterJoinRule;
 import org.apache.calcite.rel.rules.FilterMergeRule;
 import org.apache.calcite.rel.rules.FilterRemoveIsNotDistinctFromRule;
+import org.apache.calcite.rel.rules.JoinToMultiJoinRule;
 import org.apache.calcite.rel.rules.LoptOptimizeJoinRule;
 import org.apache.calcite.rel.rules.ProjectJoinTransposeRule;
 import org.apache.calcite.rel.rules.ProjectMergeRule;
@@ -141,6 +142,7 @@ public class RelationalAlgebraGenerator {
 				.addRuleInstance(FilterAggregateTransposeRule.Config.DEFAULT.toRule())
 				.addRuleInstance(FilterJoinRule.JoinConditionPushRule.Config.DEFAULT.toRule())
 				.addRuleInstance(FilterJoinRule.FilterIntoJoinRule.Config.DEFAULT.toRule())
+				.addRuleInstance(JoinToMultiJoinRule.Config.DEFAULT.toRule())
 				.addRuleInstance(LoptOptimizeJoinRule.Config.DEFAULT.toRule())
 				.addRuleInstance(ProjectMergeRule.Config.DEFAULT.toRule())
 				.addRuleInstance(FilterMergeRule.Config.DEFAULT.toRule())
