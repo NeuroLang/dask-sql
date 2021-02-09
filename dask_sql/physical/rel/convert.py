@@ -1,4 +1,5 @@
 import logging
+import time
 
 import dask.dataframe as dd
 
@@ -53,6 +54,8 @@ class RelConverter(Pluggable):
         logger.debug(
             f"Processing REL {rel} using {plugin_instance.__class__.__name__}..."
         )
+        start_time = time.perf_counter()
         df = plugin_instance.convert(rel, context=context)
-        logger.debug(f"Processed REL {rel} into {LoggableDataFrame(df)}")
+        elapsed_time = time.perf_counter() - start_time
+        logger.debug(f"Processed REL {rel} into {LoggableDataFrame(df)} ({elapsed_time}s)")
         return df

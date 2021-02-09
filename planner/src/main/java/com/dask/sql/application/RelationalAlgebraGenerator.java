@@ -31,9 +31,11 @@ import org.apache.calcite.rel.rules.FilterAggregateTransposeRule;
 import org.apache.calcite.rel.rules.FilterSetOpTransposeRule;
 import org.apache.calcite.rel.rules.FilterJoinRule;
 import org.apache.calcite.rel.rules.FilterMergeRule;
+import org.apache.calcite.rel.rules.FilterMultiJoinMergeRule;
 import org.apache.calcite.rel.rules.FilterRemoveIsNotDistinctFromRule;
 import org.apache.calcite.rel.rules.JoinToMultiJoinRule;
 import org.apache.calcite.rel.rules.LoptOptimizeJoinRule;
+import org.apache.calcite.rel.rules.MultiJoinOptimizeBushyRule;
 import org.apache.calcite.rel.rules.ProjectJoinTransposeRule;
 import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.rules.ProjectRemoveRule;
@@ -142,11 +144,13 @@ public class RelationalAlgebraGenerator {
 				.addRuleInstance(FilterAggregateTransposeRule.Config.DEFAULT.toRule())
 				.addRuleInstance(FilterJoinRule.JoinConditionPushRule.Config.DEFAULT.toRule())
 				.addRuleInstance(FilterJoinRule.FilterIntoJoinRule.Config.DEFAULT.toRule())
+				.addRuleInstance(ProjectJoinTransposeRule.Config.DEFAULT.toRule())
 				.addRuleInstance(JoinToMultiJoinRule.Config.DEFAULT.toRule())
+				.addRuleInstance(FilterMultiJoinMergeRule.Config.DEFAULT.toRule())
 				.addRuleInstance(LoptOptimizeJoinRule.Config.DEFAULT.toRule())
+				.addRuleInstance(MultiJoinOptimizeBushyRule.Config.DEFAULT.toRule())
 				.addRuleInstance(ProjectMergeRule.Config.DEFAULT.toRule())
 				.addRuleInstance(FilterMergeRule.Config.DEFAULT.toRule())
-				.addRuleInstance(ProjectJoinTransposeRule.Config.DEFAULT.toRule())
 				// In principle, not a bad idea. But we need to keep the most
 				// outer project - because otherwise the column name information is lost
 				// in cases such as SELECT x AS a, y AS B FROM df
