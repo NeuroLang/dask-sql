@@ -18,6 +18,7 @@ __all__ = [
     LogicalSortPlugin,
     LogicalTableScanPlugin,
     LogicalUnionPlugin,
+    LogicalIntersectPlugin,
     LogicalMinusPlugin,
     LogicalValuesPlugin,
     SamplePlugin,
