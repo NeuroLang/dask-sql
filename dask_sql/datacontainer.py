@@ -42,7 +42,8 @@ class ColumnContainer:
         Internal function to copy this container
         """
         return ColumnContainer(
-            self._frontend_columns.copy(), self._frontend_backend_mapping.copy()
+            self._frontend_columns.copy(),
+            self._frontend_backend_mapping.copy(),
         )
 
     def limit_to(self, fields: List[str]) -> ColumnContainer:
@@ -137,7 +138,9 @@ class ColumnContainer:
         where <number> is the column index.
         """
         return self.rename(
-            columns={str(col): f"{prefix}_{i}" for i, col in enumerate(self.columns)}
+            columns={
+                str(col): f"{prefix}_{i}" for i, col in enumerate(self.columns)
+            }
         )
 
 
@@ -166,11 +169,22 @@ class DataContainer:
         a dataframe which has the the columns specified in the
         stored ColumnContainer.
         """
-        df = self.df.assign(
-            **{
-                col_from: self.df[col_to]
-                for col_from, col_to in self.column_container.mapping()
-                if col_from in self.column_container.columns
-            }
-        )
+        # We rename as many cols as possible because renaming is much more
+        # efficient than assigning.
+
+        renames = {}
+        assigns = {}
+        for col_from, col_to in self.column_container.mapping():
+            if col_from in self.column_container.columns:
+                if (
+                    len(renames) < len(self.df.columns)
+                    and col_to not in renames
+                    and (col_from not in self.df.columns or col_from == col_to)
+                ):
+                    renames[col_to] = col_from
+                else:
+                    assigns[col_from] = self.df[col_to]
+        df = self.df.rename(columns=renames)
+        if len(assigns) > 0:
+            df = df.assign(**assigns)
         return df[self.column_container.columns]
