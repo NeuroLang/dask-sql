@@ -92,11 +92,14 @@ class LogicalJoinPlugin(BaseRelPlugin):
         # We therefore create new columns on purpose, which have a distinct name.
         assert len(lhs_on) == len(rhs_on)
         if lhs_on:
-            if join_type == "inner":
-                return self._do_inner_join_inplace(
-                    df_lhs_renamed, df_rhs_renamed, lhs_on, rhs_on,
-                    join_type, rel, filter_condition, context
-                )
+            # Doing inplace join seems to have unexpected side effects due to
+            # the join columns being shared in the resulting df for the lhs and rhs.
+            # It needs to be reworked.
+            # if join_type == "inner":
+            #     return self._do_inner_join_inplace(
+            #         df_lhs_renamed, df_rhs_renamed, lhs_on, rhs_on,
+            #         join_type, rel, filter_condition, context
+            #     )
             lhs_columns_to_add = {
                 f"common_{i}": df_lhs_renamed.iloc[:, index]
                 for i, index in enumerate(lhs_on)
