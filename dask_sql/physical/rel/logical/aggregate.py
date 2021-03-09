@@ -88,6 +88,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
 
     AGGREGATION_MAPPING = {
         "$sum0": AggregationSpecification("sum", AggregationOnPandas("sum")),
+        "sum": AggregationSpecification("sum", AggregationOnPandas("sum")),
         "any_value": AggregationSpecification(
             dd.Aggregation(
                 "any_value",
@@ -242,7 +243,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             elif len(inputs) == 0:
                 input_col = additional_column_name
             else:
-                raise NotImplementedError("Can not cope with more than one input")
+                input_col = tuple(cc.get_backend_by_frontend_index(inputs[i]) for i in inputs)
 
             # Extract flags (filtering/distinct)
             if expr.isDistinct():  # pragma: no cover
@@ -265,7 +266,10 @@ class LogicalAggregatePlugin(BaseRelPlugin):
                         f"Aggregation function {aggregation_name} not implemented (yet)."
                     )
             if isinstance(aggregation_function, AggregationSpecification):
-                dtype = df[input_col].dtype
+                if isinstance(input_col, tuple):
+                    dtype = df[input_col[0]].dtype
+                else:
+                    dtype = df[input_col].dtype
                 if pd.api.types.is_numeric_dtype(dtype):
                     aggregation_function = aggregation_function.numerical_aggregation
                 else:
@@ -322,16 +326,30 @@ class LogicalAggregatePlugin(BaseRelPlugin):
 
         # Convert into the correct format for dask
         aggregations_dict = defaultdict(dict)
+        multi_col_aggregations = dict()
         for aggregation in aggregations:
             input_col, output_col, aggregation_f = aggregation
-
-            aggregations_dict[input_col][output_col] = aggregation_f
+            if isinstance(input_col, tuple):
+                multi_col_aggregations[output_col] = (input_col, aggregation_f)
+            else:
+                aggregations_dict[input_col][output_col] = aggregation_f
 
         # Now apply the aggregation
-        logger.debug(f"Performing aggregation {dict(aggregations_dict)}")
-        agg_result = grouped_df.agg(aggregations_dict)
+        agg_result = None
+        if len(aggregations_dict) > 0:
+            logger.debug(f"Performing aggregation {dict(aggregations_dict)}")
+            agg_result = grouped_df.agg(aggregations_dict)
 
-        # ... fix the column names to a single level ...
-        agg_result.columns = agg_result.columns.get_level_values(-1)
+            # ... fix the column names to a single level ...
+            agg_result.columns = agg_result.columns.get_level_values(-1)
+        
 
+        # apply multi-column aggregations
+        for output_col, (input_col, aggregation_f) in multi_col_aggregations.items():
+            new_col = grouped_df.apply(lambda x: aggregation_f(*[getattr(x, col) for col in input_col]))
+            if agg_result is None:
+                agg_result = new_col.rename(output_col).to_frame()
+            else:
+                agg_result = agg_result.assign(**{output_col: new_col})
+        
         return agg_result
