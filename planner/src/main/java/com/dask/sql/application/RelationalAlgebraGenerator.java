@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
 
@@ -19,7 +20,9 @@ import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.jdbc.JavaTypeFactoryImpl;
 import org.apache.calcite.plan.Context;
 import org.apache.calcite.plan.Contexts;
+import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.hep.HepMatchOrder;
 import org.apache.calcite.plan.hep.HepPlanner;
 import org.apache.calcite.plan.hep.HepProgram;
 import org.apache.calcite.plan.hep.HepProgramBuilder;
@@ -54,6 +57,7 @@ import org.apache.calcite.tools.FrameworkConfig;
 import org.apache.calcite.tools.Frameworks;
 import org.apache.calcite.tools.Planner;
 import org.apache.calcite.tools.RelConversionException;
+import org.apache.calcite.tools.RuleSet;
 import org.apache.calcite.tools.ValidationException;
 
 /**
@@ -64,6 +68,11 @@ import org.apache.calcite.tools.ValidationException;
  * This class is taken (in parts) from the blazingSQL project.
  */
 public class RelationalAlgebraGenerator {
+	public enum HepExecutionType {
+        SEQUENCE,
+		COLLECTION
+    }
+
 	/// The created planner
 	private Planner planner;
 	/// The planner for optimized queries
@@ -134,32 +143,51 @@ public class RelationalAlgebraGenerator {
 
 	/// get an optimizer hep planner
 	private HepPlanner getHepPlanner(final FrameworkConfig config) {
-		// TODO: check if these rules are sensible
-		// Taken from blazingSQL
-		final HepProgram program = new HepProgramBuilder()
-				.addRuleInstance(AggregateExpandDistinctAggregatesRule.Config.JOIN.toRule())
-				.addRuleInstance(FilterSetOpTransposeRule.Config.DEFAULT.toRule())
-				.addRuleInstance(FilterAggregateTransposeRule.Config.DEFAULT.toRule())
-				.addRuleInstance(FilterJoinRule.JoinConditionPushRule.Config.DEFAULT.toRule())
-				.addRuleInstance(FilterJoinRule.FilterIntoJoinRule.Config.DEFAULT.toRule())
-				.addRuleInstance(JoinToMultiJoinRule.Config.DEFAULT.toRule())
-				.addRuleInstance(LoptOptimizeJoinRule.Config.DEFAULT.toRule())
-				.addRuleInstance(ProjectMergeRule.Config.DEFAULT.toRule())
-				.addRuleInstance(FilterMergeRule.Config.DEFAULT.toRule())
-				.addRuleInstance(ProjectJoinTransposeRule.Config.DEFAULT.toRule())
-				// In principle, not a bad idea. But we need to keep the most
-				// outer project - because otherwise the column name information is lost
-				// in cases such as SELECT x AS a, y AS B FROM df
-				// .addRuleInstance(ProjectRemoveRule.Config.DEFAULT.toRule())
-				.addRuleInstance(ReduceExpressionsRule.ProjectReduceExpressionsRule.Config.DEFAULT.toRule())
-				// this rule might make sense, but turns a < 1 into a SEARCH expression
-				// which is currently not supported by dask-sql
-				// .addRuleInstance(ReduceExpressionsRule.FilterReduceExpressionsRule.Config.DEFAULT.toRule())
-				.addRuleInstance(FilterRemoveIsNotDistinctFromRule.Config.DEFAULT.toRule())
-				// TODO: remove AVG
-				.addRuleInstance(AggregateReduceFunctionsRule.Config.DEFAULT.toRule()).build();
+		final HepProgramBuilder builder = new HepProgramBuilder();
+		builder.addMatchOrder(HepMatchOrder.ARBITRARY).addMatchLimit(Integer.MAX_VALUE);
+		// for (RelOptRule rule : DaskRuleSets.DASK_DEFAULT_CORE_RULES){
+		// 	builder.addRuleInstance(rule);
+		// }
 
-		return new HepPlanner(program, config.getContext());
+		// join reorder
+		builder.addSubprogram(getHepProgram(DaskRuleSets.JOIN_REORDER_PREPARE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(getHepProgram(DaskRuleSets.JOIN_REORDER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
+		
+		// project rules
+		builder.addSubprogram(getHepProgram(DaskRuleSets.AGGREGATE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(getHepProgram(DaskRuleSets.PROJECT_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(getHepProgram(DaskRuleSets.FILTER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(getHepProgram(DaskRuleSets.REDUCE_EXPRESSION_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		
+		// optimize logical plan
+		builder.addSubprogram(getHepProgram(DaskRuleSets.LOGICAL_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
+
+		return new HepPlanner(builder.build(), config.getContext());
+	}
+
+	/**
+	 * Builds a HepProgram for the given set of rules and with the given order. If type is COLLECTION,
+	 * rules are added as collection. Otherwise, rules are added sequentially.
+	 * @param rules
+	 * @param order
+	 * @param type
+	 * @return
+	 */
+	private HepProgram getHepProgram(final RuleSet rules, final HepMatchOrder order, final HepExecutionType type) {
+		final HepProgramBuilder builder = new HepProgramBuilder().addMatchOrder(order);
+		switch (type) {
+            case SEQUENCE:
+				for (RelOptRule rule : rules) {
+					builder.addRuleInstance(rule);
+				}
+                break;
+			case COLLECTION:
+				List<RelOptRule> rulesCollection = new ArrayList<RelOptRule>();
+				rules.iterator().forEachRemaining(rulesCollection::add);
+				builder.addRuleCollection(rulesCollection);
+				break;
+        }
+		return builder.build();
 	}
 
 	/// Parse a sql string into a sql tree
@@ -205,3 +233,4 @@ public class RelationalAlgebraGenerator {
 		return RelOptUtil.toString(relNode);
 	}
 }
+
