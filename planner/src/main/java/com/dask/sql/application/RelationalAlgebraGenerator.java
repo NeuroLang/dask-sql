@@ -151,16 +151,17 @@ public class RelationalAlgebraGenerator {
 		// 	builder.addRuleInstance(rule);
 		// }
 
-		// join reorder
-		builder.addSubprogram(getHepProgram(DaskRuleSets.JOIN_REORDER_PREPARE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(getHepProgram(DaskRuleSets.JOIN_REORDER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
-		
 		// project rules
 		builder.addSubprogram(getHepProgram(DaskRuleSets.AGGREGATE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
 		builder.addSubprogram(getHepProgram(DaskRuleSets.PROJECT_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
 		builder.addSubprogram(getHepProgram(DaskRuleSets.FILTER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
 		builder.addSubprogram(getHepProgram(DaskRuleSets.REDUCE_EXPRESSION_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		
+		// join reorder
+		builder.addSubprogram(getHepProgram(DaskRuleSets.JOIN_REORDER_PREPARE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(getHepProgram(DaskRuleSets.JOIN_REORDER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
+
+		// project rules
+		builder.addSubprogram(getHepProgram(DaskRuleSets.PROJECT_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
 		// optimize logical plan
 		builder.addSubprogram(getHepProgram(DaskRuleSets.LOGICAL_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
 

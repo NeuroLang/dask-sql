@@ -318,21 +318,24 @@ class LogicalJoinPlugin(BaseRelPlugin):
         operand_lhs = operands[0]
         operand_rhs = operands[1]
 
-        if isinstance(operand_lhs, org.apache.calcite.rex.RexInputRef) and isinstance(
-            operand_rhs, org.apache.calcite.rex.RexInputRef
-        ):
-            lhs_index = operand_lhs.getIndex()
-            rhs_index = operand_rhs.getIndex()
+        indices = []
+        for operand in operands:
+            if isinstance(operand, org.apache.calcite.rex.RexInputRef):
+                indices.append(operand.getIndex())
+            elif (
+                isinstance(operand, org.apache.calcite.rex.RexCall) and
+                isinstance(operand.getOperator(), org.apache.calcite.sql.fun.SqlCastFunction)
+            ):
+                indices.append(operand.operands[0].getIndex())
+            else:
+                raise TypeError(
+                    "Invalid join condition"
+                )  # pragma: no cover. Do not how how it could be triggered.
+        lhs_index, rhs_index = indices
 
-            # The rhs table always comes after the lhs
-            # table. Therefore we have a very simple
-            # way of checking, which index comes from which
-            # input
-            if lhs_index > rhs_index:
-                lhs_index, rhs_index = rhs_index, lhs_index
+        if lhs_index > rhs_index:
+            lhs_index, rhs_index = rhs_index, lhs_index
 
-            return lhs_index, rhs_index
+        return lhs_index, rhs_index
+            
 
-        raise TypeError(
-            "Invalid join condition"
-        )  # pragma: no cover. Do not how how it could be triggered.

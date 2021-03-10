@@ -37,6 +37,7 @@ public class DaskRuleSets {
      * RuleSet about project
      */
     static final RuleSet PROJECT_RULES = RuleSets.ofList(
+            CoreRules.AGGREGATE_PROJECT_MERGE,
             // push a projection past a filter
             CoreRules.PROJECT_FILTER_TRANSPOSE,
             // merge projections
@@ -46,7 +47,11 @@ public class DaskRuleSets {
             // removes constant keys from an Agg
             CoreRules.AGGREGATE_PROJECT_PULL_UP_CONSTANTS,
             // push project through a Union
-            CoreRules.PROJECT_SET_OP_TRANSPOSE, CoreRules.PROJECT_JOIN_TRANSPOSE);
+            CoreRules.PROJECT_SET_OP_TRANSPOSE,
+            CoreRules.JOIN_PROJECT_LEFT_TRANSPOSE,
+            CoreRules.JOIN_PROJECT_RIGHT_TRANSPOSE,
+            CoreRules.JOIN_PROJECT_BOTH_TRANSPOSE
+        );
 
     /**
      * RuleSet about aggregate
@@ -64,7 +69,8 @@ public class DaskRuleSets {
             // merge filter to MultiJoin
             CoreRules.FILTER_MULTI_JOIN_MERGE,
             // merge join to MultiJoin
-            CoreRules.JOIN_TO_MULTI_JOIN);
+            CoreRules.JOIN_TO_MULTI_JOIN
+        );
 
     /**
      * Rules to reorder joins
