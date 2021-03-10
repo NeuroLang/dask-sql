@@ -37,6 +37,7 @@ public class DaskRuleSets {
      * RuleSet about project
      */
     static final RuleSet PROJECT_RULES = RuleSets.ofList(
+            CoreRules.PROJECT_MERGE,
             CoreRules.AGGREGATE_PROJECT_MERGE,
             // push a projection past a filter
             CoreRules.PROJECT_FILTER_TRANSPOSE,

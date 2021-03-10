@@ -515,11 +515,13 @@ class Context:
             else:
                 validatedSqlNode = generator.getValidatedNode(sqlNode)
                 nonOptimizedRelNode = generator.getRelationalAlgebra(validatedSqlNode)
+                rel_string_non_op = str(generator.getRelationalAlgebraString(nonOptimizedRelNode))
+                rel_non_op_count = rel_string_non_op.count('\n')
                 rel = generator.getOptimizedRelationalAlgebra(nonOptimizedRelNode)
                 rel_string = str(generator.getRelationalAlgebraString(rel))
                 logger.debug(
-                    f"Non optimised query plan: \n "
-                    f"{str(generator.getRelationalAlgebraString(nonOptimizedRelNode))}"
+                    f"Non optimised query plan: {rel_non_op_count} ops\n "
+                    f"{rel_string_non_op}"
                 )
         except (ValidationException, SqlParseException) as e:
             logger.debug(f"Original exception raised by Java:\n {e}")
@@ -550,8 +552,8 @@ class Context:
                 "Not extracting output column names as the SQL is not a SELECT call"
             )
             select_names = None
-
-        logger.debug(f"Extracted relational algebra:\n {rel_string}")
+        br = '\n'
+        logger.debug(f"Extracted relational algebra {rel_string.count(br)} ops:\n {rel_string}")
         return rel, select_names, rel_string
 
     def _to_sql_string(self, s: "org.apache.calcite.sql.SqlNode", default_dialect=None):
