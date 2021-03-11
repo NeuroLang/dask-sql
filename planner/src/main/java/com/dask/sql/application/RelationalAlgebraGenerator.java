@@ -8,6 +8,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
 
+import com.dask.sql.application.DaskRuleSets.HepExecutionType;
 import com.dask.sql.schema.DaskSchema;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.dialect.PostgresqlSqlDialect;
@@ -70,10 +71,6 @@ import org.apache.calcite.tools.ValidationException;
  * This class is taken (in parts) from the blazingSQL project.
  */
 public class RelationalAlgebraGenerator {
-	public enum HepExecutionType {
-        SEQUENCE,
-		COLLECTION
-    }
 
 	/// The created planner
 	private Planner planner;
@@ -147,50 +144,24 @@ public class RelationalAlgebraGenerator {
 	private HepPlanner getHepPlanner(final FrameworkConfig config) {
 		final HepProgramBuilder builder = new HepProgramBuilder();
 		builder.addMatchOrder(HepMatchOrder.ARBITRARY).addMatchLimit(Integer.MAX_VALUE);
+		// Legacy rule set
 		// for (RelOptRule rule : DaskRuleSets.DASK_DEFAULT_CORE_RULES){
 		// 	builder.addRuleInstance(rule);
 		// }
 
-		// project rules
-		builder.addSubprogram(getHepProgram(DaskRuleSets.AGGREGATE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(getHepProgram(DaskRuleSets.PROJECT_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(getHepProgram(DaskRuleSets.FILTER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(getHepProgram(DaskRuleSets.REDUCE_EXPRESSION_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		// join reorder
-		builder.addSubprogram(getHepProgram(DaskRuleSets.JOIN_REORDER_PREPARE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(getHepProgram(DaskRuleSets.JOIN_REORDER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.AGGREGATE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.PROJECT_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.FILTER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.REDUCE_EXPRESSION_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		// join reorder. The first set of rules transforms joins into a large multijoin.
+		// the second set of rules splits the multijoins by applying a heuristic to determine the best join order.
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.JOIN_REORDER_PREPARE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.JOIN_REORDER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
 
-		// project rules
-		builder.addSubprogram(getHepProgram(DaskRuleSets.PROJECT_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		// optimize logical plan
-		builder.addSubprogram(getHepProgram(DaskRuleSets.LOGICAL_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
+		// optimize logical plan. Be careful not to introduce rules in this set which mess up the join order from the step before.
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.LOGICAL_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
 
 		return new HepPlanner(builder.build(), config.getContext());
-	}
-
-	/**
-	 * Builds a HepProgram for the given set of rules and with the given order. If type is COLLECTION,
-	 * rules are added as collection. Otherwise, rules are added sequentially.
-	 * @param rules
-	 * @param order
-	 * @param type
-	 * @return
-	 */
-	private HepProgram getHepProgram(final RuleSet rules, final HepMatchOrder order, final HepExecutionType type) {
-		final HepProgramBuilder builder = new HepProgramBuilder().addMatchOrder(order);
-		switch (type) {
-            case SEQUENCE:
-				for (RelOptRule rule : rules) {
-					builder.addRuleInstance(rule);
-				}
-                break;
-			case COLLECTION:
-				List<RelOptRule> rulesCollection = new ArrayList<RelOptRule>();
-				rules.iterator().forEachRemaining(rulesCollection::add);
-				builder.addRuleCollection(rulesCollection);
-				break;
-        }
-		return builder.build();
 	}
 
 	/// Parse a sql string into a sql tree
