@@ -55,6 +55,8 @@ public class RelationalAlgebraGenerator {
 	private Planner planner;
 	/// The planner for optimized queries
 	private HepPlanner hepPlanner;
+	/// The planner to optimise queries with materialized views
+	private HepPlanner viewBasedPlanner;
 
 	/// Create a new relational algebra generator from a schema
 	public RelationalAlgebraGenerator(final DaskSchema schema) throws ClassNotFoundException, SQLException {
@@ -70,10 +72,12 @@ public class RelationalAlgebraGenerator {
 
 		planner = Frameworks.getPlanner(config);
 		hepPlanner = getHepPlanner(config);
-
+		viewBasedPlanner = getViewBasedPlanner(config);
 		final DaskCalciteMaterializer materializer = new DaskCalciteMaterializer(rootSchema, schema.getName(), config);
 		for (RelOptMaterialization materialization : materializer.getMaterializations()) {
-			hepPlanner.addMaterialization(materialization);
+			// System.out.println("Adding materialized view for \n" + getRelationalAlgebraString(materialization.tableRel)
+			// 		+ "\nwith sql query plan " + getRelationalAlgebraString(materialization.queryRel));
+			viewBasedPlanner.addMaterialization(materialization);
 		}
 	}
 
@@ -198,5 +202,18 @@ public class RelationalAlgebraGenerator {
 	/// Return the string representation of a rel node
 	public String getRelationalAlgebraString(final RelNode relNode) {
 		return RelOptUtil.toString(relNode);
+	}
+
+	public RelNode getMaterializedViewsOptimizedRelationalAlgebra(final RelNode relPlan) {
+		viewBasedPlanner.setRoot(relPlan);
+		return viewBasedPlanner.findBestExp();
+	}
+
+	private HepPlanner getViewBasedPlanner(final FrameworkConfig config) {
+		final HepProgramBuilder builder = new HepProgramBuilder();
+		builder.addMatchOrder(HepMatchOrder.ARBITRARY).addMatchLimit(Integer.MAX_VALUE);
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.MATERIALIZATION_RULES, HepMatchOrder.BOTTOM_UP,
+				HepExecutionType.COLLECTION));
+		return new HepPlanner(builder.build(), config.getContext());
 	}
 }

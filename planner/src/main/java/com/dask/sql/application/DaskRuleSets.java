@@ -8,6 +8,7 @@ import org.apache.calcite.plan.hep.HepMatchOrder;
 import org.apache.calcite.plan.hep.HepProgram;
 import org.apache.calcite.plan.hep.HepProgramBuilder;
 import org.apache.calcite.rel.rules.CoreRules;
+import org.apache.calcite.rel.rules.materialize.MaterializedViewRules;
 import org.apache.calcite.tools.RuleSet;
 import org.apache.calcite.tools.RuleSets;
 
@@ -109,9 +110,18 @@ public class DaskRuleSets {
                         // convert non-all union into all-union + distinct
                         CoreRules.UNION_TO_DISTINCT, CoreRules.MINUS_MERGE,
                         // aggregation and projection rules
-                        // CoreRules.AGGREGATE_PROJECT_MERGE, CoreRules.AGGREGATE_PROJECT_PULL_UP_CONSTANTS,
+                        // CoreRules.AGGREGATE_PROJECT_MERGE,
+                        // CoreRules.AGGREGATE_PROJECT_PULL_UP_CONSTANTS,
                         // CoreRules.AGGREGATE_REMOVE, CoreRules.AGGREGATE_JOIN_TRANSPOSE_EXTENDED,
                         CoreRules.AGGREGATE_UNION_AGGREGATE_FIRST, CoreRules.AGGREGATE_UNION_AGGREGATE_SECOND);
+
+        /**
+         * RuleSet for MaterializedViews.
+         */
+        static final RuleSet MATERIALIZATION_RULES = RuleSets.ofList(MaterializedViewRules.FILTER_SCAN,
+                        MaterializedViewRules.PROJECT_FILTER, MaterializedViewRules.FILTER,
+                        MaterializedViewRules.PROJECT_JOIN, MaterializedViewRules.JOIN,
+                        MaterializedViewRules.PROJECT_AGGREGATE, MaterializedViewRules.AGGREGATE);
 
         /**
          * Initial rule set from dask_sql with a couple rules added by Demian. Not used
