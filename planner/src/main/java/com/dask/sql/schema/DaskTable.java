@@ -28,11 +28,20 @@ public class DaskTable implements ProjectableFilterableTable {
 	private final ArrayList<Pair<String, SqlTypeName>> tableColumns;
 	// Name of this table
 	private final String name;
+	// Optional sql query. If given, the table is considered a materialized view
+	// and added to the planner for view-based optimization
+	private final String sql;
+
+	/// Construct a new table with the given name and sql
+	public DaskTable(final String name, final String sql) {
+		this.name = name;
+		this.sql = sql;
+		this.tableColumns = new ArrayList<Pair<String, SqlTypeName>>();
+	}
 
 	/// Construct a new table with the given name
 	public DaskTable(final String name) {
-		this.name = name;
-		this.tableColumns = new ArrayList<Pair<String, SqlTypeName>>();
+		this(name, null);
 	}
 
 	/// Add a column with the given type
@@ -43,6 +52,14 @@ public class DaskTable implements ProjectableFilterableTable {
 	/// return the table name
 	public String getTableName() {
 		return this.name;
+	}
+
+	public String getSql() {
+		return this.sql;
+	}
+
+	public boolean isMaterializedView() {
+		return this.sql != null;
 	}
 
 	/// calcite method: Get the type of a row of this table (using the type factory)

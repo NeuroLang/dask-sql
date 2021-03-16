@@ -4,15 +4,12 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
 
 import com.dask.sql.application.DaskRuleSets.HepExecutionType;
 import com.dask.sql.schema.DaskSchema;
 import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.dialect.PostgresqlSqlDialect;
-import org.apache.calcite.avatica.util.Casing;
 import org.apache.calcite.config.CalciteConnectionConfig;
 import org.apache.calcite.config.CalciteConnectionConfigImpl;
 import org.apache.calcite.config.CalciteConnectionProperty;
@@ -21,30 +18,13 @@ import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.jdbc.JavaTypeFactoryImpl;
 import org.apache.calcite.plan.Context;
 import org.apache.calcite.plan.Contexts;
-import org.apache.calcite.plan.RelOptRule;
+import org.apache.calcite.plan.RelOptMaterialization;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.hep.HepMatchOrder;
 import org.apache.calcite.plan.hep.HepPlanner;
-import org.apache.calcite.plan.hep.HepProgram;
 import org.apache.calcite.plan.hep.HepProgramBuilder;
 import org.apache.calcite.prepare.CalciteCatalogReader;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.rules.AggregateExpandDistinctAggregatesRule;
-import org.apache.calcite.rel.rules.AggregateReduceFunctionsRule;
-import org.apache.calcite.rel.rules.FilterAggregateTransposeRule;
-import org.apache.calcite.rel.rules.FilterSetOpTransposeRule;
-import org.apache.calcite.rel.rules.FilterJoinRule;
-import org.apache.calcite.rel.rules.FilterMergeRule;
-import org.apache.calcite.rel.rules.FilterMultiJoinMergeRule;
-import org.apache.calcite.rel.rules.FilterRemoveIsNotDistinctFromRule;
-import org.apache.calcite.rel.rules.JoinToMultiJoinRule;
-import org.apache.calcite.rel.rules.LoptOptimizeJoinRule;
-import org.apache.calcite.rel.rules.MultiJoinOptimizeBushyRule;
-import org.apache.calcite.rel.rules.ProjectJoinTransposeRule;
-import org.apache.calcite.rel.rules.ProjectMergeRule;
-import org.apache.calcite.rel.rules.ProjectRemoveRule;
-import org.apache.calcite.rel.rules.ReduceExpressionsRule;
-import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.rex.RexExecutorImpl;
 import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.sql.SqlNode;
@@ -60,7 +40,6 @@ import org.apache.calcite.tools.FrameworkConfig;
 import org.apache.calcite.tools.Frameworks;
 import org.apache.calcite.tools.Planner;
 import org.apache.calcite.tools.RelConversionException;
-import org.apache.calcite.tools.RuleSet;
 import org.apache.calcite.tools.ValidationException;
 
 /**
@@ -91,6 +70,11 @@ public class RelationalAlgebraGenerator {
 
 		planner = Frameworks.getPlanner(config);
 		hepPlanner = getHepPlanner(config);
+
+		final DaskCalciteMaterializer materializer = new DaskCalciteMaterializer(rootSchema, schema.getName(), config);
+		for (RelOptMaterialization materialization : materializer.getMaterializations()) {
+			hepPlanner.addMaterialization(materialization);
+		}
 	}
 
 	/// Create the framework config, e.g. containing with SQL dialect we speak
@@ -146,20 +130,29 @@ public class RelationalAlgebraGenerator {
 		builder.addMatchOrder(HepMatchOrder.ARBITRARY).addMatchLimit(Integer.MAX_VALUE);
 		// Legacy rule set
 		// for (RelOptRule rule : DaskRuleSets.DASK_DEFAULT_CORE_RULES){
-		// 	builder.addRuleInstance(rule);
+		// builder.addRuleInstance(rule);
 		// }
 
-		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.AGGREGATE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.PROJECT_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.FILTER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.REDUCE_EXPRESSION_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.AGGREGATE_RULES, HepMatchOrder.BOTTOM_UP,
+				HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.PROJECT_RULES, HepMatchOrder.BOTTOM_UP,
+				HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.FILTER_RULES, HepMatchOrder.BOTTOM_UP,
+				HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.REDUCE_EXPRESSION_RULES, HepMatchOrder.BOTTOM_UP,
+				HepExecutionType.COLLECTION));
 		// join reorder. The first set of rules transforms joins into a large multijoin.
-		// the second set of rules splits the multijoins by applying a heuristic to determine the best join order.
-		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.JOIN_REORDER_PREPARE_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.COLLECTION));
-		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.JOIN_REORDER_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
+		// the second set of rules splits the multijoins by applying a heuristic to
+		// determine the best join order.
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.JOIN_REORDER_PREPARE_RULES, HepMatchOrder.BOTTOM_UP,
+				HepExecutionType.COLLECTION));
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.JOIN_REORDER_RULES, HepMatchOrder.BOTTOM_UP,
+				HepExecutionType.SEQUENCE));
 
-		// optimize logical plan. Be careful not to introduce rules in this set which mess up the join order from the step before.
-		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.LOGICAL_RULES, HepMatchOrder.BOTTOM_UP, HepExecutionType.SEQUENCE));
+		// optimize logical plan. Be careful not to introduce rules in this set which
+		// mess up the join order from the step before.
+		builder.addSubprogram(DaskRuleSets.hepProgram(DaskRuleSets.LOGICAL_RULES, HepMatchOrder.BOTTOM_UP,
+				HepExecutionType.SEQUENCE));
 
 		return new HepPlanner(builder.build(), config.getContext());
 	}
@@ -207,4 +200,3 @@ public class RelationalAlgebraGenerator {
 		return RelOptUtil.toString(relNode);
 	}
 }
-
