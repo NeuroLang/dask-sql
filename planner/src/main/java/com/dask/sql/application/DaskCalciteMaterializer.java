@@ -142,7 +142,7 @@ public class DaskCalciteMaterializer {
      * RelNodes which can be used during the relational algebra planning process.
      */
     protected void populate(final Materialization materialization) {
-        SqlParser parser = SqlParser.create(materialization.sql);
+        SqlParser parser = SqlParser.create(materialization.sql, config.getParserConfig());
         SqlNode node;
         try {
             node = parser.parseStmt();

@@ -68,6 +68,8 @@ class Context:
         """
         # Storage for the registered tables
         self.tables = {}
+        # Storage for the registered views
+        self.views = {}
         # Storage for the registered functions
         self.functions: Dict[str, Callable] = {}
         self.function_list: List[FunctionDescription] = []
@@ -118,6 +120,7 @@ class Context:
         input_table: InputType,
         format: str = None,
         persist: bool = True,
+        sql: str = None,
         **kwargs,
     ):
         """
@@ -193,6 +196,8 @@ class Context:
             **kwargs,
         )
         self.tables[table_name.lower()] = dc
+        if sql is not None:
+            self.views[table_name.lower()] = sql
 
     def register_dask_table(self, df: dd.DataFrame, name: str):
         """
@@ -450,11 +455,17 @@ class Context:
             logger.warning("No tables are registered.")
 
         for name, dc in self.tables.items():
-            table = DaskTable(name)
             df = dc.df
-            logger.debug(
-                f"Adding table '{name}' to schema with columns: {list(df.columns)}"
-            )
+            if name in self.views:
+                table = DaskTable(name, self.views[name])
+                logger.debug(
+                    f"Adding materialied table '{name}' to schema with columns: {list(df.columns)}"
+                )
+            else:
+                table = DaskTable(name)
+                logger.debug(
+                    f"Adding table '{name}' to schema with columns: {list(df.columns)}"
+                )
             for column in df.columns:
                 data_type = df[column].dtype
                 sql_data_type = python_to_sql_type(data_type)
