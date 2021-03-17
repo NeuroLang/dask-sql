@@ -39,6 +39,12 @@ public class DaskRuleSets {
         static final RuleSet FILTER_RULES = RuleSets.ofList(
                         // push a filter into a join
                         CoreRules.FILTER_INTO_JOIN,
+                        // Jonas : We need JOIN_PUSH_TRANSITIVE_PREDICATES rule to work 
+                        // with the FILTER_INTO_JOIN rule,
+                        // otherwise we end up with filter expressions on join conditions
+                        // (LogicalJoin(condition=[=($0, 1000)], joinType=[inner])) which
+                        // LogicalJoinPlugin can't handle.
+                        CoreRules.JOIN_PUSH_TRANSITIVE_PREDICATES,
                         // push filter into the children of a join
                         CoreRules.JOIN_CONDITION_PUSH,
                         // push filter through an aggregation
@@ -59,8 +65,11 @@ public class DaskRuleSets {
                         // removes constant keys from an Agg
                         CoreRules.AGGREGATE_PROJECT_PULL_UP_CONSTANTS,
                         // push project through a Union
-                        CoreRules.PROJECT_SET_OP_TRANSPOSE, CoreRules.JOIN_PROJECT_LEFT_TRANSPOSE,
-                        CoreRules.JOIN_PROJECT_RIGHT_TRANSPOSE, CoreRules.JOIN_PROJECT_BOTH_TRANSPOSE);
+                        CoreRules.PROJECT_SET_OP_TRANSPOSE,
+                        CoreRules.JOIN_PROJECT_LEFT_TRANSPOSE,
+                        CoreRules.JOIN_PROJECT_RIGHT_TRANSPOSE, 
+                        CoreRules.JOIN_PROJECT_BOTH_TRANSPOSE
+                        );
 
         /**
          * RuleSet about aggregate

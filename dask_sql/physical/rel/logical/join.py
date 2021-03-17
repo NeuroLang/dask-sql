@@ -315,9 +315,6 @@ class LogicalJoinPlugin(BaseRelPlugin):
         operands = rex.getOperands()
         assert len(operands) == 2
 
-        operand_lhs = operands[0]
-        operand_rhs = operands[1]
-
         indices = []
         for operand in operands:
             if isinstance(operand, org.apache.calcite.rex.RexInputRef):
