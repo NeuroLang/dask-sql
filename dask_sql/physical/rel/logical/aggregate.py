@@ -243,7 +243,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             elif len(inputs) == 0:
                 input_col = additional_column_name
             else:
-                input_col = tuple(cc.get_backend_by_frontend_index(inputs[i]) for i in inputs)
+                input_col = tuple(cc.get_backend_by_frontend_index(i) for i in inputs)
 
             # Extract flags (filtering/distinct)
             if expr.isDistinct():  # pragma: no cover
@@ -304,17 +304,23 @@ class LogicalAggregatePlugin(BaseRelPlugin):
 
             logger.debug(f"Filtered by {filter_column} before aggregation.")
 
-        # SQL and dask are treating null columns a bit different:
-        # SQL will put them to the front, dask will just ignore them
-        # Therefore we use the same trick as fugue does:
-        # we will group by both the NaN and the real column value
-        group_columns_and_nulls = []
-        for group_column in group_columns:
-            # the ~ makes NaN come first
-            is_null_column = ~(tmp_df[group_column].isnull())
-            non_nan_group_column = tmp_df[group_column].fillna(0)
+        # Jonas : we don't really care to have the exact same behaviour as SQL
+        # and grouping by series instead of column names is messing up the
+        # multi column aggregations so i'm just assuming this will work
+        # instead of the commented part below.
+        group_columns_and_nulls = group_columns
 
-            group_columns_and_nulls += [is_null_column, non_nan_group_column]
+        # # SQL and dask are treating null columns a bit different:
+        # # SQL will put them to the front, dask will just ignore them
+        # # Therefore we use the same trick as fugue does:
+        # # we will group by both the NaN and the real column value
+        # group_columns_and_nulls = []
+        # for group_column in group_columns:
+        #     # the ~ makes NaN come first
+        #     is_null_column = ~(tmp_df[group_column].isnull())
+        #     non_nan_group_column = tmp_df[group_column].fillna(0)
+
+        #     group_columns_and_nulls += [is_null_column, non_nan_group_column]
 
         if not group_columns_and_nulls:
             # This can happen in statements like
@@ -343,10 +349,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             # ... fix the column names to a single level ...
             agg_result.columns = agg_result.columns.get_level_values(-1)
         
-
         # apply multi-column aggregations
         for output_col, (input_col, aggregation_f) in multi_col_aggregations.items():
-            new_col = grouped_df.apply(lambda x: aggregation_f(*[getattr(x, col) for col in input_col]))
+            new_col = grouped_df.apply(aggregation_f)
             if agg_result is None:
                 agg_result = new_col.rename(output_col).to_frame()
             else:

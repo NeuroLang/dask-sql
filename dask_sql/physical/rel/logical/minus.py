@@ -1,6 +1,5 @@
 import dask.dataframe as dd
 
-from dask_sql.physical.rex import RexConverter
 from dask_sql.physical.rel.base import BaseRelPlugin
 from dask_sql.datacontainer import DataContainer, ColumnContainer
 
