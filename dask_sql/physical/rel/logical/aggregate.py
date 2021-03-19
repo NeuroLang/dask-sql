@@ -21,7 +21,9 @@ class ReduceAggregation(dd.Aggregation):
     """
 
     def __init__(self, name: str, operation: Callable):
-        series_aggregate = lambda s: s.aggregate(lambda x: reduce(operation, x))
+        series_aggregate = lambda s: s.aggregate(
+            lambda x: reduce(operation, x)
+        )
 
         super().__init__(name, series_aggregate, series_aggregate)
 
@@ -100,8 +102,12 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         "bit_and": AggregationSpecification(
             ReduceAggregation("bit_and", operator.and_)
         ),
-        "bit_or": AggregationSpecification(ReduceAggregation("bit_or", operator.or_)),
-        "bit_xor": AggregationSpecification(ReduceAggregation("bit_xor", operator.xor)),
+        "bit_or": AggregationSpecification(
+            ReduceAggregation("bit_or", operator.or_)
+        ),
+        "bit_xor": AggregationSpecification(
+            ReduceAggregation("bit_xor", operator.xor)
+        ),
         "count": AggregationSpecification("count"),
         "every": AggregationSpecification(
             dd.Aggregation("every", lambda s: s.all(), lambda s0: s0.all())
@@ -112,7 +118,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
     }
 
     def convert(
-        self, rel: "org.apache.calcite.rel.RelNode", context: "dask_sql.Context"
+        self,
+        rel: "org.apache.calcite.rel.RelNode",
+        context: "dask_sql.Context",
     ) -> DataContainer:
         (dc,) = self.assert_inputs(rel, 1, context)
 
@@ -123,7 +131,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         cc = cc.make_unique()
 
         # I have no idea what that is, but so far it was always of length 1
-        assert len(rel.getGroupSets()) == 1, "Do not know how to handle this case!"
+        assert (
+            len(rel.getGroupSets()) == 1
+        ), "Do not know how to handle this case!"
 
         # Extract the information, which columns we need to group for
         group_column_indices = [int(i) for i in rel.getGroupSet()]
@@ -142,7 +152,10 @@ class LogicalAggregatePlugin(BaseRelPlugin):
 
         # Do all aggregates
         df_result, output_column_order = self._do_aggregations(
-            rel, dc, group_columns, context,
+            rel,
+            dc,
+            group_columns,
+            context,
         )
 
         # SQL does not care about the index, but we do not want to have any multiindices
@@ -181,39 +194,82 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         output_column_order = group_columns.copy()
 
         # Collect all aggregations we need to do
-        collected_aggregations, output_column_order = self._collect_aggregations(
+        (
+            collected_aggregations,
+            output_column_order,
+        ) = self._collect_aggregations(
             rel, df, cc, context, additional_column_name, output_column_order
         )
 
         # SQL needs to have a column with the grouped values as the first
-        # output column.
-        # As the values of the group columns
-        # are the same for a single group anyways, we just use the first row
-        for col in group_columns:
-            collected_aggregations[None].append((col, col, "first", None))
+        # output column. As the values of the group columns
+        # are the same for a single group anyways, we just use the first row.
+        df_result = None
+        if group_columns:
+            default_column_aggregations = []
+            for col in group_columns:
+                default_column_aggregations.append((col, col, "first", None))
+            df_result = self._apply_and_assign_aggregations(
+                df,
+                df_result,
+                None,
+                default_column_aggregations,
+                additional_column_name,
+                group_columns,
+            )
 
         # Now we can go ahead and use these grouped aggregations
         # to perform the actual aggregation
         # It is very important to start with the non-filtered entry.
         # Otherwise we might loose some entries in the grouped columns
-        key = None
-        aggregations = collected_aggregations.pop(key)
-        df_result = self._perform_aggregation(
-            df, None, aggregations, additional_column_name, group_columns,
-        )
-
-        # Now we can also the the rest
-        for filter_column, aggregations in collected_aggregations.items():
-            agg_result = self._perform_aggregation(
-                df, filter_column, aggregations, additional_column_name, group_columns,
+        if None in collected_aggregations:
+            key = None
+            aggregations = collected_aggregations.pop(key)
+            df_result = self._apply_and_assign_aggregations(
+                df,
+                df_result,
+                None,
+                aggregations,
+                additional_column_name,
+                group_columns,
             )
 
-            # ... and finally concat the new data with the already present columns
-            df_result = df_result.assign(
-                **{col: agg_result[col] for col in agg_result.columns}
+        # Now we can also add the rest
+        for filter_column, aggregations in collected_aggregations.items():
+            df_result = self._apply_and_assign_aggregations(
+                df,
+                df_result,
+                filter_column,
+                aggregations,
+                additional_column_name,
+                group_columns,
             )
 
         return df_result, output_column_order
+
+    def _apply_and_assign_aggregations(
+        self,
+        df: dd.DataFrame,
+        df_result: dd.DataFrame,
+        filter_column: str,
+        aggregations: List[Tuple[str, str, Any, Type]],
+        additional_column_name: str,
+        group_columns: List[str],
+    ):
+        agg_result = self._perform_aggregation(
+            df,
+            filter_column,
+            aggregations,
+            additional_column_name,
+            group_columns,
+        )
+        if df_result is None:
+            df_result = agg_result
+        else:
+            df_result = df_result.assign(
+                **{col: agg_result[col] for col in agg_result.columns}
+            )
+        return df_result
 
     def _collect_aggregations(
         self,
@@ -223,13 +279,15 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         context: "dask_sql.Context",
         additional_column_name: str,
         output_column_order: List[str],
-    ) -> Tuple[Dict[Tuple[str, str], List[Tuple[str, str, Any, Type]]], List[str]]:
+    ) -> Tuple[
+        Dict[Tuple[str, str], List[Tuple[str, str, Any, Type]]], List[str]
+    ]:
         """
         Collect all aggregations together, which have the same filter column
         so that the aggregations only need to be done once.
 
         Returns the aggregations as mapping filter_column -> List of Aggregations
-        where the aggregations are in the form (input_col, output_col, aggregation function (or string))
+        where the aggregations are in the form (input_col, output_col, aggregation function (or string), return_type)
         """
         collected_aggregations = defaultdict(list)
 
@@ -243,7 +301,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             elif len(inputs) == 0:
                 input_col = additional_column_name
             else:
-                input_col = tuple(cc.get_backend_by_frontend_index(i) for i in inputs)
+                input_col = tuple(
+                    cc.get_backend_by_frontend_index(i) for i in inputs
+                )
 
             # Extract flags (filtering/distinct)
             if expr.isDistinct():  # pragma: no cover
@@ -251,7 +311,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
 
             filter_column = None
             if expr.hasFilter():
-                filter_column = cc.get_backend_by_frontend_index(expr.filterArg)
+                filter_column = cc.get_backend_by_frontend_index(
+                    expr.filterArg
+                )
 
             # Find out which aggregation function to use
             aggregation_name = str(expr.getAggregation().getName())
@@ -261,7 +323,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
                 if function_description.name == aggregation_name:
                     return_type = function_description.return_type
             try:
-                aggregation_function = self.AGGREGATION_MAPPING[aggregation_name]
+                aggregation_function = self.AGGREGATION_MAPPING[
+                    aggregation_name
+                ]
             except KeyError:
                 try:
                     aggregation_function = context.functions[aggregation_name]
@@ -275,7 +339,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
                 else:
                     dtype = df[input_col].dtype
                 if pd.api.types.is_numeric_dtype(dtype):
-                    aggregation_function = aggregation_function.numerical_aggregation
+                    aggregation_function = (
+                        aggregation_function.numerical_aggregation
+                    )
                 else:
                     aggregation_function = (
                         aggregation_function.non_numerical_aggregation
@@ -334,31 +400,50 @@ class LogicalAggregatePlugin(BaseRelPlugin):
 
         grouped_df = tmp_df.groupby(by=group_columns_and_nulls)
 
-        # Convert into the correct format for dask
-        aggregations_dict = defaultdict(dict)
-        multi_col_aggregations = dict()
+        # Dask supports two types of group-by aggregations: by calling .agg
+        # or .apply on a GroupBy dataframe. We want to call .agg if possible,
+        # as it's supposed to be faster en cleaner. But it doesn't work for
+        # all cases, in which case we use .apply instead. We start by
+        # preparing the aggregate calls in a format dask understands.
+        aggregate_aggregations = defaultdict(dict)
+        apply_aggregations = dict()
         for aggregation in aggregations:
             input_col, output_col, aggregation_f, return_type = aggregation
-            if isinstance(input_col, tuple):
-                multi_col_aggregations[output_col] = (input_col, aggregation_f, return_type)
+            if isinstance(
+                aggregation_f, (AggregationSpecification, dd.Aggregation, str)
+            ):
+                aggregate_aggregations[input_col][output_col] = aggregation_f
             else:
-                aggregations_dict[input_col][output_col] = aggregation_f
+                apply_aggregations[output_col] = (
+                    input_col,
+                    aggregation_f,
+                    return_type,
+                )
 
-        # Now apply the aggregation
+        # Now we apply the aggregations
         agg_result = None
-        if len(aggregations_dict) > 0:
-            logger.debug(f"Performing aggregation {dict(aggregations_dict)}")
-            agg_result = grouped_df.agg(aggregations_dict)
+        if len(aggregate_aggregations) > 0:
+            logger.debug(f"Performing aggregation {dict(aggregate_aggregations)}")
+            agg_result = grouped_df.agg(aggregate_aggregations)
 
             # ... fix the column names to a single level ...
             agg_result.columns = agg_result.columns.get_level_values(-1)
-        
-        # apply multi-column aggregations
-        for output_col, (input_col, aggregation_f, return_type) in multi_col_aggregations.items():
-            new_col = grouped_df.apply(lambda x: aggregation_f(*[getattr(x, col) for col in input_col]))
+
+        # apply aggregations with .apply
+        for output_col, (
+            input_col,
+            aggregation_f,
+            return_type,
+        ) in apply_aggregations.items():
+            new_col = grouped_df.apply(
+                lambda x: aggregation_f(
+                    *[getattr(x, col) for col in input_col]
+                ),
+                meta=(output_col, return_type)
+            )
             if agg_result is None:
                 agg_result = new_col.rename(output_col).to_frame()
             else:
                 agg_result = agg_result.assign(**{output_col: new_col})
-        
+
         return agg_result
