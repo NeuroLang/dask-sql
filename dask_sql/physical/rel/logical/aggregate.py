@@ -1,7 +1,7 @@
 import operator
 from collections import defaultdict
 from functools import reduce
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Type
 import logging
 
 import pandas as pd
@@ -190,7 +190,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         # As the values of the group columns
         # are the same for a single group anyways, we just use the first row
         for col in group_columns:
-            collected_aggregations[None].append((col, col, "first"))
+            collected_aggregations[None].append((col, col, "first", None))
 
         # Now we can go ahead and use these grouped aggregations
         # to perform the actual aggregation
@@ -223,7 +223,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         context: "dask_sql.Context",
         additional_column_name: str,
         output_column_order: List[str],
-    ) -> Tuple[Dict[Tuple[str, str], List[Tuple[str, str, Any]]], List[str]]:
+    ) -> Tuple[Dict[Tuple[str, str], List[Tuple[str, str, Any, Type]]], List[str]]:
         """
         Collect all aggregations together, which have the same filter column
         so that the aggregations only need to be done once.
@@ -256,6 +256,10 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             # Find out which aggregation function to use
             aggregation_name = str(expr.getAggregation().getName())
             aggregation_name = aggregation_name.lower()
+            return_type = None
+            for function_description in context.function_list:
+                if function_description.name == aggregation_name:
+                    return_type = function_description.return_type
             try:
                 aggregation_function = self.AGGREGATION_MAPPING[aggregation_name]
             except KeyError:
@@ -282,7 +286,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
 
             # Store the aggregation
             key = filter_column
-            value = (input_col, output_col, aggregation_function)
+            value = (input_col, output_col, aggregation_function, return_type)
             collected_aggregations[key].append(value)
             output_column_order.append(output_col)
 
@@ -292,7 +296,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         self,
         df: dd.DataFrame,
         filter_column: str,
-        aggregations: List[Tuple[str, str, Any]],
+        aggregations: List[Tuple[str, str, Any, Type]],
         additional_column_name: str,
         group_columns: List[str],
     ):
@@ -334,9 +338,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         aggregations_dict = defaultdict(dict)
         multi_col_aggregations = dict()
         for aggregation in aggregations:
-            input_col, output_col, aggregation_f = aggregation
+            input_col, output_col, aggregation_f, return_type = aggregation
             if isinstance(input_col, tuple):
-                multi_col_aggregations[output_col] = (input_col, aggregation_f)
+                multi_col_aggregations[output_col] = (input_col, aggregation_f, return_type)
             else:
                 aggregations_dict[input_col][output_col] = aggregation_f
 
@@ -350,8 +354,8 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             agg_result.columns = agg_result.columns.get_level_values(-1)
         
         # apply multi-column aggregations
-        for output_col, (input_col, aggregation_f) in multi_col_aggregations.items():
-            new_col = grouped_df.apply(aggregation_f)
+        for output_col, (input_col, aggregation_f, return_type) in multi_col_aggregations.items():
+            new_col = grouped_df.apply(lambda x: aggregation_f(*[getattr(x, col) for col in input_col]))
             if agg_result is None:
                 agg_result = new_col.rename(output_col).to_frame()
             else:
