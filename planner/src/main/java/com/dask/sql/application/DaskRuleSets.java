@@ -39,12 +39,14 @@ public class DaskRuleSets {
         static final RuleSet FILTER_RULES = RuleSets.ofList(
                         // push a filter into a join
                         CoreRules.FILTER_INTO_JOIN,
-                        // Jonas : We need JOIN_PUSH_TRANSITIVE_PREDICATES rule to work 
+                        // Jonas : We need both JOIN_PUSH_TRANSITIVE_PREDICATES 
+                        // and JOIN_PUSH_EXPRESSIONS rules to work 
                         // with the FILTER_INTO_JOIN rule,
                         // otherwise we end up with filter expressions on join conditions
-                        // (LogicalJoin(condition=[=($0, 1000)], joinType=[inner])) which
+                        // i.e. (emp join dept on emp.deptno * 2 = dept.deptno) which
                         // LogicalJoinPlugin can't handle.
                         CoreRules.JOIN_PUSH_TRANSITIVE_PREDICATES,
+                        CoreRules.JOIN_PUSH_EXPRESSIONS,
                         // push filter into the children of a join
                         CoreRules.JOIN_CONDITION_PUSH,
                         // push filter through an aggregation
@@ -81,7 +83,8 @@ public class DaskRuleSets {
                         CoreRules.AGGREGATE_REMOVE, CoreRules.AGGREGATE_JOIN_REMOVE);
 
         /**
-         * RuleSet for merging joins
+         * RuleSet for merging joins. All joins are merged into a large multi-join,
+         * which is then optimised by one of the JOIN_REORDER_RULES.
          */
         static final RuleSet JOIN_REORDER_PREPARE_RULES = RuleSets.ofList(
                         // merge project to MultiJoin
