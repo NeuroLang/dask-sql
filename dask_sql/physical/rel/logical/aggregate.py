@@ -435,6 +435,8 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             aggregation_f,
             return_type,
         ) in apply_aggregations.items():
+            if not isinstance(input_col, tuple):
+                input_col = (input_col,)
             new_col = grouped_df.apply(
                 lambda x: aggregation_f(
                     *[getattr(x, col) for col in input_col]

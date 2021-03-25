@@ -39,13 +39,11 @@ public class DaskRuleSets {
         static final RuleSet FILTER_RULES = RuleSets.ofList(
                         // push a filter into a join
                         CoreRules.FILTER_INTO_JOIN,
-                        // Jonas : We need both JOIN_PUSH_TRANSITIVE_PREDICATES 
-                        // and JOIN_PUSH_EXPRESSIONS rules to work 
+                        // Jonas : We need JOIN_PUSH_EXPRESSIONS rule to work 
                         // with the FILTER_INTO_JOIN rule,
                         // otherwise we end up with filter expressions on join conditions
                         // i.e. (emp join dept on emp.deptno * 2 = dept.deptno) which
                         // LogicalJoinPlugin can't handle.
-                        CoreRules.JOIN_PUSH_TRANSITIVE_PREDICATES,
                         CoreRules.JOIN_PUSH_EXPRESSIONS,
                         // push filter into the children of a join
                         CoreRules.JOIN_CONDITION_PUSH,
