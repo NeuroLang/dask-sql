@@ -44,6 +44,7 @@ public class DaskRuleSets {
                         // otherwise we end up with filter expressions on join conditions
                         // i.e. (emp join dept on emp.deptno * 2 = dept.deptno) which
                         // LogicalJoinPlugin can't handle.
+                        // CoreRules.JOIN_PUSH_TRANSITIVE_PREDICATES,
                         CoreRules.JOIN_PUSH_EXPRESSIONS,
                         // push filter into the children of a join
                         CoreRules.JOIN_CONDITION_PUSH,

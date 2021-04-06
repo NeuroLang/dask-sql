@@ -316,6 +316,11 @@ class LogicalJoinPlugin(BaseRelPlugin):
                 isinstance(operand.getOperator(), org.apache.calcite.sql.fun.SqlCastFunction)
             ):
                 indices.append(operand.operands[0].getIndex())
+            elif isinstance(operand, org.apache.calcite.rex.RexLiteral):
+                # i.e. join condition is col.id == constant
+                # raising an AssertionError means that the RexExpression will be added
+                # as a filter condition to be applied after the join.
+                raise AssertionError("This is actually a filter condition")
             else:
                 raise TypeError(
                     "Invalid join condition"

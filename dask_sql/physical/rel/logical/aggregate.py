@@ -402,7 +402,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
 
         # Dask supports two types of group-by aggregations: by calling .agg
         # or .apply on a GroupBy dataframe. We want to call .agg if possible,
-        # as it's supposed to be faster en cleaner. But it doesn't work for
+        # as it's supposed to be faster and cleaner. But it doesn't work for
         # all cases, in which case we use .apply instead. We start by
         # preparing the aggregate calls in a format dask understands.
         aggregate_aggregations = defaultdict(dict)
