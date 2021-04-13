@@ -50,8 +50,11 @@ public class DaskRuleSets {
                         CoreRules.JOIN_CONDITION_PUSH,
                         // push filter through an aggregation
                         CoreRules.FILTER_AGGREGATE_TRANSPOSE,
-                        // push a filter past a project
-                        CoreRules.FILTER_PROJECT_TRANSPOSE,
+                        // Jonas : the FILTER_PROJECT_TRANSPOSE rule causes Calcite to push filter conditions (like x = y)
+                        // into a projection (i.e. project(x, y, z)) which (sometimes) causes errors as the project will
+                        // select column y instead of x for instance and loose the reference to y.
+                        // It's the reason for several test failures in neurolang.
+                        // CoreRules.FILTER_PROJECT_TRANSPOSE,
                         // push a filter past a setop
                         CoreRules.FILTER_SET_OP_TRANSPOSE, CoreRules.FILTER_MERGE);
 
