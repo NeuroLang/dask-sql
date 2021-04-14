@@ -141,8 +141,6 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             cc.get_backend_by_frontend_index(i) for i in group_column_indices
         ]
 
-        dc = DataContainer(df, cc)
-
         if not group_columns:
             # There was actually no GROUP BY specified in the SQL
             # Still, this plan can also be used if we need to aggregate something over the full
@@ -150,48 +148,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             # To reuse the code, we just create a new column at the end with a single value
             logger.debug("Performing full-table aggregation")
 
-        # Do all aggregates
-        df_result, output_column_order = self._do_aggregations(
-            rel,
-            dc,
-            group_columns,
-            context,
-        )
-
-        # SQL does not care about the index, but we do not want to have any multiindices
-        df_agg = df_result.reset_index(drop=True)
-
-        # Fix the column names and the order of them, as this was messed with during the aggregations
-        df_agg.columns = df_agg.columns.get_level_values(-1)
-        cc = ColumnContainer(df_agg.columns).limit_to(output_column_order)
-
-        cc = self.fix_column_to_row_type(cc, rel.getRowType())
-        dc = DataContainer(df_agg, cc)
-        dc = self.fix_dtype_to_row_type(dc, rel.getRowType())
-        return dc
-
-    def _do_aggregations(
-        self,
-        rel: "org.apache.calcite.rel.RelNode",
-        dc: DataContainer,
-        group_columns: List[str],
-        context: "dask_sql.Context",
-    ) -> Tuple[dd.DataFrame, List[str]]:
-        """
-        Main functionality: return the result dataframe
-        and the output column order
-        """
-        df = dc.df
-        cc = dc.column_container
-
-        # We might need it later.
-        # If not, lets hope that adding a single column should not
-        # be a huge problem...
-        additional_column_name = new_temporary_column(df)
-        df = df.assign(**{additional_column_name: 1})
-
         # Add an entry for every grouped column, as SQL wants them first
         output_column_order = group_columns.copy()
+        additional_column_name = new_temporary_column(df)
 
         # Collect all aggregations we need to do
         (
@@ -200,6 +159,52 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         ) = self._collect_aggregations(
             rel, df, cc, context, additional_column_name, output_column_order
         )
+
+        # Check if we're doing a real aggregation or just droping duplicates
+        if (
+            len(group_columns) == len(cc.columns)
+            and len(collected_aggregations) == 0
+        ):
+            # Just drop duplicates
+            df_agg = df.drop_duplicates()
+        else:
+            # Do the aggregations
+            df_result = self._do_aggregations(
+                df,
+                group_columns,
+                collected_aggregations,
+                additional_column_name,
+            )
+
+            # SQL does not care about the index, but we do not want to have any multiindices
+            df_agg = df_result.reset_index(drop=True)
+
+            # Fix the column names and the order of them, as this was messed with during the aggregations
+            df_agg.columns = df_agg.columns.get_level_values(-1)
+            cc = ColumnContainer(df_agg.columns).limit_to(output_column_order)
+
+        cc = self.fix_column_to_row_type(cc, rel.getRowType())
+        dc = DataContainer(df_agg, cc)
+        dc = self.fix_dtype_to_row_type(dc, rel.getRowType())
+        return dc
+
+    def _do_aggregations(
+        self,
+        df: dd.DataFrame,
+        group_columns: List[str],
+        collected_aggregations: Dict[
+            Tuple[str, str], List[Tuple[str, str, Any, Type]]
+        ],
+        additional_column_name: str,
+    ) -> Tuple[dd.DataFrame, List[str]]:
+        """
+        Main functionality: return the result dataframe
+        and the output column order
+        """
+        # We might need it later.
+        # If not, lets hope that adding a single column should not
+        # be a huge problem...
+        df = df.assign(**{additional_column_name: 1})
 
         # SQL needs to have a column with the grouped values as the first
         # output column. As the values of the group columns
@@ -245,7 +250,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
                 group_columns,
             )
 
-        return df_result, output_column_order
+        return df_result
 
     def _apply_and_assign_aggregations(
         self,
@@ -398,7 +403,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             # without any groupby statement
             group_columns_and_nulls = [additional_column_name]
 
-        grouped_df = tmp_df.groupby(by=group_columns_and_nulls)
+        grouped_df = tmp_df.groupby(by=group_columns_and_nulls, sort=False)
 
         # Dask supports two types of group-by aggregations: by calling .agg
         # or .apply on a GroupBy dataframe. We want to call .agg if possible,
@@ -423,7 +428,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
         # Now we apply the aggregations
         agg_result = None
         if len(aggregate_aggregations) > 0:
-            logger.debug(f"Performing aggregation {dict(aggregate_aggregations)}")
+            logger.debug(
+                f"Performing aggregation {dict(aggregate_aggregations)}"
+            )
             agg_result = grouped_df.agg(aggregate_aggregations)
 
             # ... fix the column names to a single level ...
@@ -441,7 +448,7 @@ class LogicalAggregatePlugin(BaseRelPlugin):
                 lambda x: aggregation_f(
                     *[getattr(x, col) for col in input_col]
                 ),
-                meta=(output_col, return_type)
+                meta=(output_col, return_type),
             )
             if agg_result is None:
                 agg_result = new_col.rename(output_col).to_frame()
