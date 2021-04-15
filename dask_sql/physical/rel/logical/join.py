@@ -42,7 +42,9 @@ class LogicalJoinPlugin(BaseRelPlugin):
     }
 
     def convert(
-        self, rel: "org.apache.calcite.rel.RelNode", context: "dask_sql.Context"
+        self,
+        rel: "org.apache.calcite.rel.RelNode",
+        context: "dask_sql.Context",
     ) -> DataContainer:
         # Joining is a bit more complicated, so lets do it in steps:
 
@@ -78,9 +80,13 @@ class LogicalJoinPlugin(BaseRelPlugin):
         # As this is probably non-sense for large tables, but there is no other
         # known solution so far.
         join_condition = rel.getCondition()
-        lhs_on, rhs_on, filter_condition = self._split_join_condition(join_condition)
+        lhs_on, rhs_on, filter_condition = self._split_join_condition(
+            join_condition
+        )
 
-        logger.debug(f"Joining with type {join_type} on columns {lhs_on}, {rhs_on}.")
+        logger.debug(
+            f"Joining with type {join_type} on columns {lhs_on}, {rhs_on}."
+        )
 
         # lhs_on and rhs_on are the indices of the columns to merge on.
         # The given column indices are for the full, merged table which consists
@@ -108,13 +114,19 @@ class LogicalJoinPlugin(BaseRelPlugin):
             if join_type in ["inner", "right"]:
                 df_lhs_filter = reduce(
                     operator.and_,
-                    [~df_lhs_renamed.iloc[:, index].isna() for index in lhs_on],
+                    [
+                        ~df_lhs_renamed.iloc[:, index].isna()
+                        for index in lhs_on
+                    ],
                 )
                 df_lhs_renamed = df_lhs_renamed[df_lhs_filter]
             if join_type in ["inner", "left"]:
                 df_rhs_filter = reduce(
                     operator.and_,
-                    [~df_rhs_renamed.iloc[:, index].isna() for index in rhs_on],
+                    [
+                        ~df_rhs_renamed.iloc[:, index].isna()
+                        for index in rhs_on
+                    ],
                 )
                 df_rhs_renamed = df_rhs_renamed[df_rhs_filter]
         else:
@@ -138,7 +150,9 @@ class LogicalJoinPlugin(BaseRelPlugin):
         # 5. Now we can finally merge on these columns
         # The resulting dataframe will contain all (renamed) columns from the lhs and rhs
         # plus the added columns
-        df = dd.merge(df_lhs_with_tmp, df_rhs_with_tmp, on=added_columns, how=join_type)
+        df = dd.merge(
+            df_lhs_with_tmp, df_rhs_with_tmp, on=added_columns, how=join_type
+        )
 
         # 6. So the next step is to make sure
         # we have the correct column order (and to remove the temporary join columns)
@@ -154,89 +168,6 @@ class LogicalJoinPlugin(BaseRelPlugin):
             {
                 from_col: to_col
                 for from_col, to_col in zip(cc.columns, field_specifications)
-            }
-        )
-        cc = self.fix_column_to_row_type(cc, rel.getRowType())
-        dc = DataContainer(df, cc)
-
-        # 7. Last but not least we apply any filters by and-chaining together the filters
-        if filter_condition:
-            # This line is a bit of code duplication with RexCallPlugin - but I guess it is worth to keep it separate
-            filter_condition = reduce(
-                operator.and_,
-                [
-                    RexConverter.convert(rex, dc, context=context)
-                    for rex in filter_condition
-                ],
-            )
-            logger.debug(f"Additionally applying filter {filter_condition}")
-            df = filter_or_scalar(df, filter_condition)
-            dc = DataContainer(df, cc)
-
-        dc = self.fix_dtype_to_row_type(dc, rel.getRowType())
-        return dc
-
-    def _do_inner_join_inplace(
-        self, df_lhs_renamed, df_rhs_renamed, lhs_on, rhs_on,
-        join_type, rel, filter_condition, context
-    ):
-        """
-        Same method as above, but instead of adding temporary join columns to merge on,
-        we merge on columns already in the dataframe by renaming them.
-        """
-        df_lhs_to_merge = df_lhs_renamed.rename(columns={
-            df_lhs_renamed.columns[index]: f"common_{i}"
-            for i, index in enumerate(lhs_on)
-        })
-        df_rhs_to_merge = df_rhs_renamed.rename(columns={
-            df_rhs_renamed.columns[index]: f"common_{i}"
-            for i, index in enumerate(rhs_on)
-        })
-        on_columns = [f"common_{i}" for i in range(len(lhs_on))]
-
-        # SQL compatibility: when joining on columns that
-        # contain NULLs, pandas will actually happily
-        # keep those NULLs. That is however not compatible with
-        # SQL, so we get rid of them here
-        df_lhs_filter = reduce(
-            operator.and_,
-            [~df_lhs_to_merge.iloc[:, index].isna() for index in lhs_on],
-        )
-        df_lhs_to_merge = df_lhs_to_merge[df_lhs_filter]
-        df_rhs_filter = reduce(
-            operator.and_,
-            [~df_rhs_to_merge.iloc[:, index].isna() for index in rhs_on],
-        )
-        df_rhs_to_merge = df_rhs_to_merge[df_rhs_filter]
-
-        df = dd.merge(df_lhs_to_merge, df_rhs_to_merge, on=on_columns, how=join_type)
-
-        # 6. So the next step is to make sure
-        # we have the correct column order.
-        correct_column_order = list(df_lhs_renamed.columns) + list(
-            df_rhs_renamed.columns
-        )
-        # We update the columns for the rhs to point to the resulting join columns
-        if lhs_on:
-            for i, on_column in enumerate(on_columns):
-                correct_column_order[lhs_on[i]] = on_column
-                correct_column_order[len(df_lhs_renamed.columns) + rhs_on[i]] = on_column
-        cc = ColumnContainer(df.columns).limit_to(correct_column_order)
-
-        # and to rename them like the rel specifies
-        row_type = rel.getRowType()
-        field_specifications = [str(f) for f in row_type.getFieldNames()]
-        l_lhs = len(df_lhs_renamed.columns)
-        cc = cc.rename(
-            {
-                from_col: to_col
-                for from_col, to_col in zip(cc.columns[:l_lhs], field_specifications[:l_lhs])
-            }
-        )
-        cc = cc.rename(
-            {
-                from_col: to_col
-                for from_col, to_col in zip(cc.columns[l_lhs:], field_specifications[l_lhs:])
             }
         )
         cc = self.fix_column_to_row_type(cc, rel.getRowType())
@@ -311,9 +242,11 @@ class LogicalJoinPlugin(BaseRelPlugin):
         for operand in operands:
             if isinstance(operand, org.apache.calcite.rex.RexInputRef):
                 indices.append(operand.getIndex())
-            elif (
-                isinstance(operand, org.apache.calcite.rex.RexCall) and
-                isinstance(operand.getOperator(), org.apache.calcite.sql.fun.SqlCastFunction)
+            elif isinstance(
+                operand, org.apache.calcite.rex.RexCall
+            ) and isinstance(
+                operand.getOperator(),
+                org.apache.calcite.sql.fun.SqlCastFunction,
             ):
                 indices.append(operand.operands[0].getIndex())
             elif isinstance(operand, org.apache.calcite.rex.RexLiteral):
@@ -331,5 +264,3 @@ class LogicalJoinPlugin(BaseRelPlugin):
             lhs_index, rhs_index = rhs_index, lhs_index
 
         return lhs_index, rhs_index
-            
-

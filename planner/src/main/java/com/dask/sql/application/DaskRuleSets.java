@@ -61,7 +61,8 @@ public class DaskRuleSets {
         /**
          * RuleSet about project Dont' add CoreRules.PROJECT_REMOVE
          */
-        static final RuleSet PROJECT_RULES = RuleSets.ofList(CoreRules.PROJECT_MERGE, CoreRules.AGGREGATE_PROJECT_MERGE,
+        static final RuleSet PROJECT_RULES = RuleSets.ofList(
+                        CoreRules.AGGREGATE_PROJECT_MERGE,
                         // push a projection past a filter
                         CoreRules.PROJECT_FILTER_TRANSPOSE,
                         // merge projections
@@ -69,10 +70,7 @@ public class DaskRuleSets {
                         // removes constant keys from an Agg
                         CoreRules.AGGREGATE_PROJECT_PULL_UP_CONSTANTS,
                         // push project through a Union
-                        CoreRules.PROJECT_SET_OP_TRANSPOSE,
-                        CoreRules.JOIN_PROJECT_LEFT_TRANSPOSE,
-                        CoreRules.JOIN_PROJECT_RIGHT_TRANSPOSE, 
-                        CoreRules.JOIN_PROJECT_BOTH_TRANSPOSE
+                        CoreRules.PROJECT_SET_OP_TRANSPOSE
                         );
 
         /**
