@@ -76,10 +76,7 @@ setup(
     install_requires=[
         "dask[dataframe]>=2.19.0",
         "distributed",
-        "pandas<1.2.0,>=1.0.0",  # pandas 1.2.0 introduced float NaN dtype,
-        # which is currently not working with dask,
-        # so the test is failing, see https://github.com/dask/dask/issues/7156
-        # below 1.0, there were no nullable ext. types
+        "pandas>=1.0.0", # below 1.0, there were no nullable ext. types
         "jpype1>=1.0.2",
         "fastapi>=0.61.1",
         "uvicorn>=0.11.3",
