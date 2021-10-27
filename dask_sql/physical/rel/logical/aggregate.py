@@ -436,7 +436,9 @@ class LogicalAggregatePlugin(BaseRelPlugin):
             # ... fix the column names to a single level ...
             agg_result.columns = agg_result.columns.get_level_values(-1)
 
-        # apply aggregations with .apply
+        # apply aggregations with .apply. The .persist() calls on agg_result are
+        # important otherwise when the dataframe gets computed, the lambda function
+        # to apply will be the last one of the list.
         for output_col, (
             input_col,
             aggregation_f,
@@ -451,8 +453,8 @@ class LogicalAggregatePlugin(BaseRelPlugin):
                 meta=(output_col, return_type),
             )
             if agg_result is None:
-                agg_result = new_col.rename(output_col).to_frame()
+                agg_result = new_col.rename(output_col).to_frame().persist()
             else:
-                agg_result = agg_result.assign(**{output_col: new_col})
+                agg_result = agg_result.assign(**{output_col: new_col}).persist()
 
         return agg_result
